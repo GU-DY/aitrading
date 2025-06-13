@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <title>DATAGPT 股票预测</title>
+
+  <!-- 前端依赖 -->
+
+  <script src="https://unpkg.com/vue@2/dist/vue.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
+
+  <!-- 样式（保持与其他页面一致） -->
+  <style>
+    :root{--primary:#3e7bff;--primary-light:#5f93ff;--bg:#f7f9fc;--text:#333}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:var(--text);background:var(--bg);line-height:1.6}
+    nav{background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.05);position:sticky;top:0;z-index:10}
+    .nav-container{max-width:1200px;margin:0 auto;padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:56px}
+    .brand{font-size:20px;font-weight:600;color:var(--primary);text-decoration:none}
+    .nav-links{display:flex;gap:24px;list-style:none}
+    .nav-links a{text-decoration:none;color:var(--text);font-size:15px;transition:.2s}
+    .nav-links a:hover{color:var(--primary)}
+    .hero{background:linear-gradient(135deg,#5696ff 0%,#3e7bff 80%);color:#fff;padding:100px 16px 140px}
+    .hero-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:center;gap:60px;flex-wrap:wrap}
+    .hero-text{flex:1 1 320px;text-align:left}
+    .hero-text h1{font-size:42px;font-weight:700;margin-bottom:16px}
+    .hero-img{flex:0 1 300px;max-width:300px;width:100%;user-select:none;pointer-events:none}
+    .container{max-width:880px;margin:-80px auto 80px;padding:0 16px}
+    .card{background:#fff;border-radius:12px;padding:32px 24px;box-shadow:0 8px 24px rgba(0,0,0,.06)}
+    h2{margin-bottom:24px;text-align:center}
+    form label{display:block;margin:12px 0 8px;font-weight:500}
+    input[type="text"],input[type="date"]{width:100%;padding:10px 12px;border:1px solid #dcdfe6;border-radius:6px;font-size:14px;outline:none;transition:.2s}
+    input:focus{border-color:var(--primary-light)}
+    button{margin-top:20px;padding:10px 20px;border:none;border-radius:6px;background:var(--primary);color:#fff;font-size:15px;cursor:pointer;transition:.2s}
+    button:hover{background:var(--primary-light)}
+    pre.result-box{white-space:pre-wrap;background:#f0f4ff;border:1px solid #c7d4ff;border-radius:6px;padding:16px;margin-top:32px;font-size:14px;line-height:1.5}
+    pre.reasoning-box{white-space:pre-wrap;background:#fffbe6;border:1px solid #ffe58f;border-radius:6px;padding:16px;margin-top:24px;font-size:14px;line-height:1.5}
+    .spinner-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;z-index:999}
+    .spinner{width:54px;height:54px;border:6px solid #ddd;border-top-color:var(--primary);border-radius:50%;animation:spin 1s linear infinite}
+    .autocomplete{           /* 输入框包裹容器 */
+      position:relative;
+    }
+    .dropdown{               /* 下拉 UL */
+      position:absolute;
+      left:0;right:0;
+      top:100%;              /* 紧贴输入框底部 */
+      max-height:220px;      /* 超出高度就滚动 */
+      overflow:auto;
+      background:#fff;
+      border:1px solid #dcdfe6;
+      border-top:none;
+      border-radius:0 0 6px 6px;
+      z-index:20;
+    }
+    .dropdown li{
+      padding:8px 12px;
+      cursor:pointer;
+      white-space:nowrap;
+    }
+    .dropdown li:hover{
+      background:#f0f6ff;
+    }
+    @keyframes spin{to{transform:rotate(360deg)}}
+  </style>
+</head>
+
+<body>
+  <div id="app">
+    <!-- 顶部导航 -->
+    <nav>
+      <div class="nav-container">
+        <a href="#" class="brand">DATAGPT量化策略平台</a>
+        <ul class="nav-links">
+          <li><a href="predictgp.html">个股预测</a></li>
+          <li><a href="index.html">个股回测</a></li>
+          <li><a href="#">指数预测</a></li>
+          <li><a href="#">指数回测</a></li>
+          <li><a href="#">DATAGPT策略回测</a></li>
+        </ul>
+      </div>
+    </nav>
+
+    <!-- Hero -->
+    <section class="hero">
+      <div class="hero-inner">
+        <div class="hero-text"><h1>股票预测</h1></div>
+        <img src="robotreal.png" alt="量化机器人" class="hero-img">
+      </div>
+    </section>
+
+    <!-- 参数卡片 -->
+    <div class="container">
+      <div class="card">
+        <h2>预测参数</h2>
+        <form @submit.prevent="submitForm">
+          <label>股票代码</label>
+          <div class="autocomplete">
+            <input type="text"
+                  v-model="form.ticker"
+                  placeholder="000001 或 平安银行"
+                  @input="onInput"
+                  @focus="showDropdown = true"
+                  @blur="hideDropdown"
+                  autocomplete="off" />
+
+            <!-- 下拉列表 -->
+            <ul v-show="showDropdown && filteredStocks.length" class="dropdown">
+              <li v-for="s in filteredStocks"
+                  :key="s.code"
+                  @mousedown.prevent="selectStock(s)">
+                {{ s.code }} {{ s.name }}
+              </li>
+            </ul>
+          </div>
+
+          <label>开始日期</label>
+          <input type="date" v-model="form.start_date" required>
+
+          <button type="submit" :disabled="loading">开始预测</button>
+        </form>
+
+        <!-- 预测结果 -->
+        <pre v-if="result" class="result-box">{{ result }}</pre>
+        <pre v-if="reasoning" class="reasoning-box"><strong>推理过程：</strong>\n{{ reasoning }}</pre>
+        <pre v-if="analysis" class="reasoning-box" style="background:#f7f7f7;border-color:#ddd;max-height:420px;overflow:auto;"><strong>完整日志：</strong>\n{{ analysis }}</pre>
+      </div>
+    </div>
+
+    <!-- 全屏加载动画 -->
+    <div v-if="loading" class="spinner-overlay"><div class="spinner"></div></div>
+  </div>
+
+  <!-- 业务逻辑 -->
+  <script src="predict.js"></script>
+ </body>
+</html>
